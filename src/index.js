@@ -14,20 +14,23 @@ function auth(req, res, next) {
   next();
 }
 
+async function handleAliasCreation(req, res) {
+  try {
+    const { domain } = req.body || {};
+    const alias = generateAlias(domain);
+    await addAliasToStalwart(alias);
+    res.status(201).json({ alias });
+  } catch (err) {
+    console.error("Alias creation failed:", err);
+    res.status(500).json({ error: "Failed to create alias" });
+  }
+}
+
 // Addy.io-compatible endpoint
-app.post('/api/v1/aliases', auth, async (req, res) => {
-  const { domain } = req.body || {};
-  const alias = generateAlias(domain);
-  await addAliasToStalwart(alias);
-  res.status(201).json({ alias });
-});
+app.post('/api/v1/aliases', auth, handleAliasCreation);
 
 // SimpleLogin-compatible endpoint
-app.post('/api/alias/random/new', auth, async (req, res) => {
-  const alias = generateAlias();
-  await addAliasToStalwart(alias);
-  res.status(201).json({ alias });
-});
+app.post('/api/alias/random/new', auth, handleAliasCreation);
 
 app.listen(config.port, () => {
   console.log(`Alias service running on port ${config.port}`);

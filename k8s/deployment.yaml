@@ -2,68 +2,48 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: staliaswarden
-  namespace: staliaswarden
+  namespace: stalwart
+  labels:
+    app.kubernetes.io/name: staliaswarden
 spec:
+  replicas: 1
   selector:
     matchLabels:
-      app: staliaswarden
+      app.kubernetes.io/name: staliaswarden
   template:
     metadata:
       labels:
-        app: staliaswarden
+        app.kubernetes.io/name: staliaswarden
     spec:
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1001
-        runAsGroup: 1001
-        fsGroup: 1001
-        fsGroupChangePolicy: Always
         seccompProfile:
           type: RuntimeDefault
-      volumes:
-        - name: secrets
-          secret:
-            secretName: staliaswarden-secrets
       containers:
         - name: staliaswarden
-          image: ghcr.io/goingdark-social/staliaswarden:latest
-          imagePullPolicy: Always
+          image: ghcr.io/goingdark-social/staliaswarden:main-e7962a1
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: staliaswarden-config
+            - secretRef:
+                name: staliaswarden-secret
           env:
-            - name: KUBERNETES
-              value: "true"
             - name: PORT
               value: "3000"
-            - name: STALWART_URL
-              value: "https://mailadmin.peekoff.com"
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
-              drop: ["ALL"]
+              drop:
+                - ALL
           resources:
             requests:
-              memory: "64Mi"
-              cpu: "50m"
+              cpu: 50m
+              memory: 64Mi
             limits:
-              memory: "128Mi"
-              cpu: "100m"
-          ports:
-            - containerPort: 3000
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 3000
-            initialDelaySeconds: 10
-            periodSeconds: 30
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 3000
-            initialDelaySeconds: 5
-            periodSeconds: 10
-          volumeMounts:
-            - name: secrets
-              mountPath: /etc/secrets
-              readOnly: true
-      imagePullSecrets:
-        - name: ghcr-secret
-
+              cpu: 100m
+              memory: 128Mi

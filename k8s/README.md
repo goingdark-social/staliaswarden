@@ -52,11 +52,8 @@ If you're not using External Secrets Operator, you can create the secret manuall
 ```bash
 kubectl create secret generic staliaswarden-secrets \
   --namespace=staliaswarden \
-  --from-literal=api_token='your-api-token' \
   --from-literal=alias_domain='yourdomain.com' \
-  --from-literal=forward_to='your-main-email@example.com' \
-  --from-literal=stalwart_username='your-stalwart-username' \
-  --from-literal=stalwart_password='your-stalwart-password'
+  --from-literal=forward_to='your-main-email@example.com'
 ```
 
 Or use the example file as a template:
@@ -84,13 +81,12 @@ Replace:
 
 ### 3. Update External Secret (if using External Secrets)
 
-If using External Secrets, edit `external-secret.yaml` and update the `remoteRef.key` values to match your secret store keys:
+If using External Secrets, edit `external-secret.yaml` and update the `remoteRef.key` values to match your secret store keys (if needed):
 
-- `app-staliaswarden-api-token` - API token for Bitwarden extension
-- `app-staliaswarden-alias-domain` - Email domain for aliases
+- `app-staliaswarden-alias-domain` - Email domain for aliases (optional)
 - `app-staliaswarden-forward-to` - Main email address
-- `app-stalwart-username` - Stalwart admin username
-- `app-stalwart-admin-password` - Stalwart admin password
+
+Note: Users now provide their own Stalwart API tokens directly in requests, so no API token or Stalwart credentials need to be stored in secrets.
 
 Also ensure the `secretStoreRef.name` matches your ClusterSecretStore name (default: `bitwarden-backend`).
 
@@ -160,11 +156,10 @@ The application reads configuration from:
 2. Environment variables (fallback)
 
 The following secrets are expected in the `staliaswarden-secrets` Kubernetes secret:
-- `api_token` - API token for Bitwarden authentication
 - `alias_domain` - Default domain for email aliases (optional)
 - `forward_to` - Main email address where aliases forward
-- `stalwart_username` - Stalwart admin username
-- `stalwart_password` - Stalwart admin password
+
+**Note:** Users now provide their own Stalwart API tokens directly in the Authorization header of their requests. No API token or Stalwart credentials need to be stored in Kubernetes secrets.
 
 These secrets are typically managed via External Secrets Operator. See `external-secret.yaml` for the configuration.
 

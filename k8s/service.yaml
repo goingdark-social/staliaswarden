@@ -2,8 +2,9 @@ apiVersion: v1
 kind: Service
 metadata:
   name: staliaswarden
-  namespace: staliaswarden
+  namespace: stalwart
   labels:
+    app.kubernetes.io/name: staliaswarden
     app: staliaswarden
 spec:
   type: ClusterIP
@@ -13,5 +14,6 @@ spec:
       protocol: TCP
       name: http
   selector:
+    app.kubernetes.io/name: staliaswarden
     app: staliaswarden
 

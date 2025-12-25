@@ -10,10 +10,12 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: staliaswarden
+      app: staliaswarden
   template:
     metadata:
       labels:
         app.kubernetes.io/name: staliaswarden
+        app: staliaswarden
     spec:
       securityContext:
         runAsNonRoot: true
@@ -23,14 +25,13 @@ spec:
         - name: staliaswarden
           image: ghcr.io/goingdark-social/staliaswarden:main-e7962a1
           imagePullPolicy: IfNotPresent
-          envFrom:
-            - configMapRef:
-                name: staliaswarden-config
-            - secretRef:
-                name: staliaswarden-secret
           env:
             - name: PORT
               value: "3000"
+            - name: ALIAS_DOMAIN
+              value: "peekoff.com"
+            - name: STALWART_URL
+              value: "http://stalwart.stalwart.svc.cluster.local:8080/api"
           ports:
             - name: http
               containerPort: 3000

@@ -60,7 +60,7 @@ async function getPrincipalFromToken(stalwartToken) {
   throw new Error('Unable to determine principal from API key');
 }
 
-export async function addAliasToStalwart(alias, stalwartToken) {
+export async function addAliasToStalwart(alias, stalwartToken, description = null) {
   if (!stalwartToken) {
     throw new Error('Stalwart API token is required');
   }
@@ -96,7 +96,10 @@ export async function addAliasToStalwart(alias, stalwartToken) {
     log('STALWART REQUEST', `PATCH ${config.stalwartUrl}${url}`, payload);
     const res = await api.patch(url, payload);
     log('STALWART RESPONSE', `PATCH ${url} - Status: ${res.status}`, res.data);
-    log('INFO', `Alias ${alias} added to Stalwart for principal ${principal}`);
+    
+    // Include description in the log if provided by Bitwarden
+    const descriptionText = description ? ` (${description})` : '';
+    log('INFO', `Alias ${alias} added to Stalwart for principal ${principal}${descriptionText}`);
     return res;
   } catch (err) {
     log('ERROR', `Failed to add alias to Stalwart: ${err.message}`, err.response?.data);

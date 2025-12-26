@@ -19,7 +19,7 @@ async function createAlias(domain, stalwartToken) {
   return alias;
 }
 
-app.post('/api/v1/aliases', async (req, res) => {
+app.post('/api/aliases', async (req, res) => {
   // Extract Stalwart API token from Authorization header
   const authHeader = req.headers['authorization'];
   if (!authHeader) {

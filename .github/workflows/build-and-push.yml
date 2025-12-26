@@ -7,10 +7,22 @@ on:
       - master
     tags:
       - 'v*'
+    paths:
+      - 'src/**'
+      - 'Dockerfile'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/build-and-push.yml'
   pull_request:
     branches:
       - main
       - master
+    paths:
+      - 'src/**'
+      - 'Dockerfile'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/build-and-push.yml'
   workflow_dispatch:
 
 env:
@@ -21,6 +33,9 @@ env:
 
 jobs:
   build-and-push:
+    concurrency:
+      group: build-${{ github.ref }}
+      cancel-in-progress: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

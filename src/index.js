@@ -76,7 +76,7 @@ async function createAlias(domain, stalwartToken, description = null) {
   // Pull the site domain out of Bitwarden's boilerplate description so the
   // MaskedEmail description and forDomain fields stay clean (just the domain).
   const siteDomain = extractDomainFromDescription(description);
-  const cleanDescription = siteDomain ?? description ?? null;
+  const cleanDescription = siteDomain ?? null;
 
   const result = await addAliasToStalwart(domain, stalwartToken, cleanDescription, {
     forDomain: siteDomain ?? undefined,

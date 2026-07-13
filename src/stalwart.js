@@ -33,44 +33,63 @@ async function discoverJmapSession(baseUrl, authHeader) {
 
   for (const path of JMAP_SESSION_PATHS) {
     const sessionUrl = `${origin}${path}`;
+
+    // Only network-level errors (ECONNREFUSED, DNS, timeout) are caught here —
+    // everything else (auth failure, bad session payload) propagates immediately.
+    let resp;
     try {
       log('STALWART REQUEST', `GET ${sessionUrl} (JMAP session discovery)`);
-      const resp = await axios.get(sessionUrl, {
+      resp = await axios.get(sessionUrl, {
         headers: { Authorization: authHeader },
         maxRedirects: 5,
+        timeout: 5000,
         validateStatus: (s) => s < 500,
       });
-
-      if (resp.status === 200 && resp.data?.apiUrl) {
-        const session = resp.data;
-
-        // Rewrite Stalwart's advertised apiUrl to use our configured origin
-        // so all requests go through the same host/proxy as STALWART_URL.
-        // Stalwart may advertise an internal hostname that's unreachable here.
-        const advertisedPath = new URL(session.apiUrl).pathname;
-        const apiUrl = `${origin}${advertisedPath}`;
-
-        const accountId =
-          session.primaryAccounts?.['urn:stalwart:jmap'] ??
-          session.primaryAccounts?.['urn:ietf:params:jmap:core'] ??
-          session.primaryAccounts?.['urn:ietf:params:jmap:mail'] ??
-          (session.accounts ? Object.keys(session.accounts)[0] : null);
-
-        if (!accountId) {
-          throw new Error(
-            `JMAP session at ${sessionUrl} returned apiUrl but no account IDs. ` +
-              `Full session: ${JSON.stringify(session)}`
-          );
-        }
-
-        log('STALWART RESPONSE', `GET ${sessionUrl} – apiUrl: ${apiUrl}, accountId: ${accountId}`);
-        return { apiUrl, accountId };
-      }
-
-      log('INFO', `JMAP session not found at ${sessionUrl} (status ${resp.status}), trying next path…`);
     } catch (err) {
       log('INFO', `JMAP session probe failed for ${sessionUrl}: ${err.message}`);
+      continue;
     }
+
+    if (resp.status === 401 || resp.status === 403) {
+      throw new Error(
+        `Stalwart authentication failed (HTTP ${resp.status}). ` +
+          `Check that the API token is valid and has not expired.`
+      );
+    }
+
+    if (resp.status !== 200 || !resp.data?.apiUrl) {
+      log('INFO', `JMAP session not found at ${sessionUrl} (status ${resp.status}), trying next path…`);
+      continue;
+    }
+
+    const session = resp.data;
+
+    // Rewrite Stalwart's advertised apiUrl to use our configured origin
+    // so all requests go through the same host/proxy as STALWART_URL.
+    // Stalwart may advertise an internal hostname or relative path.
+    let advertisedPath;
+    try {
+      advertisedPath = new URL(session.apiUrl).pathname;
+    } catch {
+      advertisedPath = session.apiUrl.startsWith('/') ? session.apiUrl : `/${session.apiUrl}`;
+    }
+    const apiUrl = `${origin}${advertisedPath}`;
+
+    const accountId =
+      session.primaryAccounts?.['urn:stalwart:jmap'] ??
+      session.primaryAccounts?.['urn:ietf:params:jmap:core'] ??
+      session.primaryAccounts?.['urn:ietf:params:jmap:mail'] ??
+      (session.accounts ? Object.keys(session.accounts)[0] : null);
+
+    if (!accountId) {
+      throw new Error(
+        `JMAP session at ${sessionUrl} returned apiUrl but no account IDs. ` +
+          `Full session: ${JSON.stringify(session)}`
+      );
+    }
+
+    log('STALWART RESPONSE', `GET ${sessionUrl} – apiUrl: ${apiUrl}, accountId: ${accountId}`);
+    return { apiUrl, accountId };
   }
 
   throw new Error(
@@ -139,13 +158,7 @@ export async function addAliasToStalwart(desiredAlias, stalwartToken, descriptio
   const authHeader = toAuthHeader(stalwartToken);
   const client = buildHttpClient(authHeader);
 
-  let apiUrl, accountId;
-  try {
-    ({ apiUrl, accountId } = await discoverJmapSession(config.stalwartUrl, authHeader));
-  } catch (err) {
-    log('ERROR', `JMAP session discovery failed: ${err.message}`);
-    throw err;
-  }
+  const { apiUrl, accountId } = await discoverJmapSession(config.stalwartUrl, authHeader);
 
   const createFields = {
     enabled: true,

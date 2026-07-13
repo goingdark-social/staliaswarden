@@ -1,24 +1,3 @@
-/**
- * stalwart.js – Stalwart Mail Server integration for staliaswarden
- *
- * Requires Stalwart v0.16+ Enterprise Edition.
- *
- * Masked email is an Enterprise-only feature represented by the MaskedEmail
- * JMAP object (urn:stalwart:jmap capability). Earlier versions of this file
- * used the REST /principal API which was removed in v0.16.0.
- *
- * MaskedEmail fields (relevant subset):
- *   id            server-set
- *   accountId     server-set, read-only
- *   email         server-set — the generated address (local@domain)
- *   description   mutable — free-text note
- *   forDomain     mutable — the site the address was issued to
- *   createdBy     mutable at create time
- *   enabled       mutable — disables delivery without destroying the mask
- *   emailPrefix   write-only, creation only — request a specific local part
- *   emailDomain   write-only, creation only — request a specific domain
- */
-
 import axios from 'axios';
 import config from './config.js';
 import { log } from './logger.js';
@@ -113,6 +92,7 @@ function buildHttpClient(authHeader) {
       'Content-Type': 'application/json',
       Authorization: authHeader,
     },
+    timeout: 10000,
   });
 }
 
@@ -146,13 +126,12 @@ function extractMethodResult(jmapResponse, methodName, callId) {
 export async function addAliasToStalwart(desiredAlias, stalwartToken, description = null, opts = {}) {
   if (!stalwartToken) throw new Error('Stalwart API token is required');
   if (!config.stalwartUrl) throw new Error('STALWART_URL is not configured.');
-
-  let emailPrefix = null;
-  let emailDomain = desiredAlias;
-  const atIndex = desiredAlias.lastIndexOf('@');
-  if (atIndex > 0 && atIndex < desiredAlias.length - 1) {
-    emailPrefix = desiredAlias.substring(0, atIndex);
-    emailDomain = desiredAlias.substring(atIndex + 1);
+  try {
+    new URL(config.stalwartUrl);
+  } catch {
+    throw new Error(
+      `STALWART_URL is not a valid URL: '${config.stalwartUrl}'. Include the protocol, e.g. https://stalwart.example.com`
+    );
   }
 
   const authHeader = toAuthHeader(stalwartToken);
@@ -162,8 +141,7 @@ export async function addAliasToStalwart(desiredAlias, stalwartToken, descriptio
 
   const createFields = {
     enabled: true,
-    emailDomain,
-    ...(emailPrefix != null ? { emailPrefix } : {}),
+    emailDomain: desiredAlias,
     ...(description != null ? { description } : {}),
     ...(opts.emailPrefix != null ? { emailPrefix: opts.emailPrefix } : {}),
     ...(opts.forDomain != null ? { forDomain: opts.forDomain } : {}),
@@ -186,15 +164,15 @@ export async function addAliasToStalwart(desiredAlias, stalwartToken, descriptio
   if (notCreated.new1) {
     const problem = notCreated.new1;
     throw new Error(
-      `Stalwart rejected the masked email creation for domain '${emailDomain}': ` +
+      `Stalwart rejected the masked email creation for domain '${desiredAlias}': ` +
         (problem.description ?? JSON.stringify(problem))
     );
   }
 
   const created = setResp?.created?.new1;
-  if (!created || !created.email) {
+  if (!created || !created.email || !created.id) {
     throw new Error(
-      `x:MaskedEmail/set did not return a created object. Full response: ${JSON.stringify(setResp)}`
+      `x:MaskedEmail/set did not return a complete created object (need email and id). Full response: ${JSON.stringify(setResp)}`
     );
   }
 

@@ -34,7 +34,7 @@ Tests mock `axios`, `stalwart.js`, `logger.js`, and `config.js` — no live Stal
 
 | Variable | Required | Notes |
 |----------|----------|-------|
-| `STALWART_URL` | Yes | Root URL of Stalwart, e.g. `https://stalwart.example.com`. **No `/api` suffix.** |
+| `STALWART_URL` | Yes | Root URL of Stalwart, e.g. `https://stalwart.example.com`. **Must include the protocol (`https://`). No `/api` suffix.** |
 | `PORT` | No | Default `3000` |
 
 ## Release process
@@ -51,6 +51,9 @@ Major version bumps must document breaking changes in `CHANGELOG.md` before merg
 
 - `discoverJmapSession` tries `/.well-known/jmap` then `/jmap/session`. Network errors skip to the next path; auth errors (401/403) throw immediately.
 - The advertised `apiUrl` in the JMAP session is always rewritten to use the configured origin so traffic goes through the same host/proxy as `STALWART_URL`.
+- `addAliasToStalwart`'s first parameter (`desiredAlias`) is always a bare domain (e.g. `example.com`), never a full email address. The JMAP server generates the local part.
+- All axios clients carry a `timeout`: 5 s for session-discovery probes (`axios.get` in `discoverJmapSession`), 10 s for the JMAP POST client built by `buildHttpClient`.
+- `STALWART_URL` is validated as a well-formed URL (must include `https://`) at the top of `addAliasToStalwart`, giving a clear error before any network call.
 - `getBaseLabel` has a known limitation: a bare ccTLD domain like `example.co.uk` (3 parts) is indistinguishable from `sub.example.com` (also 3 parts) without a public suffix list. The function returns the middle label (`co`). This matches the original `alias.js` behaviour and is documented in the unit tests.
 
 ## Code conventions

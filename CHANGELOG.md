@@ -7,6 +7,29 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ---
 
+## [2.1.0] - 2026-09-04
+
+### Fixed
+
+- `x:MaskedEmail/set` no longer sends `accountId` as a method argument or `createdBy` as a create field. Stalwart derives both from the credentials that authenticate the request, and neither is part of the documented create shape. `createdBy` now shows the API key's description in the Account Manager.
+- JMAP session discovery no longer fails when the session advertises no `primaryAccounts`. An API-key principal often has none, and the account is server-derived anyway.
+- Request-level JMAP failures are no longer reported as axios' generic `Request failed with status code 4xx`. HTTP 401 and 403 now name the cause — a rejected API key, or a key missing the `sysMaskedEmailCreate` permission — and are forwarded to Bitwarden with the original status instead of a blanket 500.
+- A missing, empty, or scheme-only (`Bearer`) `Authorization` header now returns a 401 that names Bitwarden's **API key** field, instead of the generic `Missing Authorization header`.
+- Log writes to a non-writable directory no longer produce an `EACCES` line per log entry. The directory is probed once at startup; on failure the service warns once and logs to stdout only.
+- `k8s/deployment.yaml` pinned a pre-v2 image (`main-e7962a1`) and set `STALWART_URL` with an `/api` suffix. Both are v1-era settings: the old image calls the REST `/principal` API that Stalwart removed in v0.16.0, which surfaces in Bitwarden as `Unable to determine principal from API key`. Now pinned to `:2` with a root `STALWART_URL`.
+
+### Added
+
+- `LOG_DIR` environment variable to point request/response logging at a writable volume.
+- README section on creating the Stalwart API key (including the required `sysMaskedEmailCreate` permission) and a troubleshooting table mapping each error Bitwarden surfaces to its cause.
+
+### Changed
+
+- The Docker image runs as the non-root `node` user, owns its own log directory, and starts `node` directly rather than through `npm` so it works under `readOnlyRootFilesystem`.
+- The Kubernetes deployment mounts an `emptyDir` for logs and enables `readOnlyRootFilesystem`.
+
+---
+
 ## [2.0.0] - 2026-07-13
 
 ### ⚠️ Breaking Changes

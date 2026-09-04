@@ -9,3 +9,5 @@ README.md
 docker-compose.yml
 .github
 *.md
+logs
+test

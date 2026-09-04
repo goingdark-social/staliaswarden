@@ -19,26 +19,41 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: staliaswarden
-          image: ghcr.io/goingdark-social/staliaswarden:main-e7962a1
-          imagePullPolicy: IfNotPresent
+          # v2 requires Stalwart v0.16+ and speaks JMAP. Anything older calls
+          # the REST /principal API that Stalwart removed in v0.16.0.
+          image: ghcr.io/goingdark-social/staliaswarden:2
+          imagePullPolicy: Always
           env:
             - name: PORT
               value: "3000"
+            # Root URL only — no /api suffix. The JMAP endpoint is discovered
+            # via /.well-known/jmap.
             - name: STALWART_URL
-              value: "http://stalwart.stalwart.svc.cluster.local:8080/api"
+              value: "http://stalwart.stalwart.svc.cluster.local:8080"
+            - name: LOG_DIR
+              value: "/var/log/staliaswarden"
           ports:
             - name: http
               containerPort: 3000
               protocol: TCP
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop:
                 - ALL
+          volumeMounts:
+            - name: logs
+              mountPath: /var/log/staliaswarden
+            - name: tmp
+              mountPath: /tmp
           resources:
             requests:
               cpu: 50m
@@ -46,3 +61,8 @@ spec:
             limits:
               cpu: 100m
               memory: 128Mi
+      volumes:
+        - name: logs
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

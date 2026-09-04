@@ -30,9 +30,11 @@ async function discoverJmapSession(baseUrl, authHeader) {
     }
 
     if (resp.status === 401 || resp.status === 403) {
-      throw new Error(
-        `Stalwart authentication failed (HTTP ${resp.status}). ` +
-          `Check that the API token is valid and has not expired.`
+      throw httpError(
+        resp.status,
+        `Stalwart rejected the API key (HTTP ${resp.status}). ` +
+          `Check that the key pasted into Bitwarden is valid, has not expired, ` +
+          `and is not restricted to other IP addresses.`
       );
     }
 
@@ -60,14 +62,10 @@ async function discoverJmapSession(baseUrl, authHeader) {
       session.primaryAccounts?.['urn:ietf:params:jmap:mail'] ??
       (session.accounts ? Object.keys(session.accounts)[0] : null);
 
-    if (!accountId) {
-      throw new Error(
-        `JMAP session at ${sessionUrl} returned apiUrl but no account IDs. ` +
-          `Full session: ${JSON.stringify(session)}`
-      );
-    }
-
-    log('STALWART RESPONSE', `GET ${sessionUrl} – apiUrl: ${apiUrl}, accountId: ${accountId}`);
+    // accountId is informational only. x:MaskedEmail/set derives the owning
+    // account from the credentials used to authenticate the request, so a
+    // session that advertises no primaryAccounts is still usable.
+    log('STALWART RESPONSE', `GET ${sessionUrl} – apiUrl: ${apiUrl}, accountId: ${accountId ?? '(not advertised)'}`);
     return { apiUrl, accountId };
   }
 
@@ -96,12 +94,54 @@ function buildHttpClient(authHeader) {
   });
 }
 
+// Carries the upstream status so the HTTP layer can answer Bitwarden with 401
+// instead of a blanket 500 when the API key is the problem.
+function httpError(status, message) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
+
 async function jmapRequest(client, apiUrl, methodCalls) {
   const requestBody = { using: JMAP_USING, methodCalls };
   log('STALWART REQUEST', `POST ${apiUrl}`, requestBody);
-  const response = await client.post(apiUrl, requestBody);
+
+  let response;
+  try {
+    response = await client.post(apiUrl, requestBody);
+  } catch (err) {
+    throw describeJmapFailure(err, apiUrl);
+  }
+
   log('STALWART RESPONSE', `POST ${apiUrl} – Status: ${response.status}`, response.data);
   return response.data;
+}
+
+// Stalwart answers request-level failures with RFC 7807 problem+json. Axios
+// collapses those to 'Request failed with status code 4xx', which hides the
+// two causes that actually happen in the field: a bad API key and an API key
+// without the sysMaskedEmailCreate permission.
+function describeJmapFailure(err, apiUrl) {
+  const status = err.response?.status;
+  if (!status) return new Error(`JMAP request to ${apiUrl} failed: ${err.message}`);
+
+  const problem = err.response.data;
+  const detail =
+    typeof problem === 'string'
+      ? problem
+      : [problem?.title, problem?.detail].filter(Boolean).join(' – ') || JSON.stringify(problem);
+
+  if (status === 401) {
+    return httpError(401, `Stalwart rejected the API key (HTTP 401): ${detail}. Check the key pasted into Bitwarden's API key field.`);
+  }
+  if (status === 403) {
+    return httpError(
+      403,
+      `Stalwart accepted the API key but denied the request (HTTP 403): ${detail}. ` +
+        `The key needs the sysMaskedEmailCreate permission.`
+    );
+  }
+  return new Error(`JMAP request to ${apiUrl} failed with HTTP ${status}: ${detail}`);
 }
 
 function extractMethodResult(jmapResponse, methodName, callId) {
@@ -146,13 +186,12 @@ export async function addAliasToStalwart(desiredAlias, stalwartToken, descriptio
     ...(opts.emailPrefix != null ? { emailPrefix: opts.emailPrefix } : {}),
     ...(opts.forDomain != null ? { forDomain: opts.forDomain } : {}),
     ...(opts.url != null ? { url: opts.url } : {}),
-    createdBy: opts.createdBy ?? 'staliaswarden',
   };
 
   let setResp;
   try {
     const raw = await jmapRequest(client, apiUrl, [
-      ['x:MaskedEmail/set', { accountId, create: { new1: createFields } }, 'c1'],
+      ['x:MaskedEmail/set', { create: { new1: createFields } }, 'c1'],
     ]);
     setResp = extractMethodResult(raw, 'x:MaskedEmail/set', 'c1');
   } catch (err) {
@@ -176,6 +215,6 @@ export async function addAliasToStalwart(desiredAlias, stalwartToken, descriptio
     );
   }
 
-  log('INFO', `Masked email ${created.email} created for account ${accountId}`);
+  log('INFO', `Masked email ${created.email} created for account ${accountId ?? '(server-assigned)'}`);
   return { email: created.email, id: created.id };
 }

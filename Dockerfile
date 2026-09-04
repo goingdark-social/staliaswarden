@@ -1,17 +1,21 @@
 FROM node:24-alpine
 
-# Set working directory
 WORKDIR /usr/src/app
 
-# Copy package files and install dependencies
 COPY package*.json ./
-RUN npm install --only=production
+RUN npm ci --omit=dev
 
-# Copy app code
 COPY . .
 
-# Expose port
+# The app writes request/response logs to ./logs. Kubernetes runs the pod as a
+# non-root user, so the directory has to be owned by that user or every log
+# line turns into an EACCES.
+RUN mkdir -p /usr/src/app/logs && chown -R node:node /usr/src/app
+
+USER node
+
 EXPOSE 3000
 
-# Run app
-CMD ["npm", "start"]
+# node directly rather than via npm: npm wants a writable HOME for its cache,
+# which breaks under readOnlyRootFilesystem.
+CMD ["node", "src/index.js"]

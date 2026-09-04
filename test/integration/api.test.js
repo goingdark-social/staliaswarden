@@ -15,6 +15,7 @@ import { addAliasToStalwart } from '../../src/stalwart.js'
 import { app } from '../../src/index.js'
 
 const AUTH = 'Bearer test-token'
+const TOKEN = 'test-token'
 
 describe('POST /api/v1/aliases', () => {
   beforeEach(() => {
@@ -25,7 +26,45 @@ describe('POST /api/v1/aliases', () => {
     it('returns 401 when Authorization header is missing', async () => {
       const res = await request(app).post('/api/v1/aliases').send({ domain: 'example.com' })
       expect(res.status).toBe(401)
-      expect(res.body.error).toMatch(/Authorization/i)
+      expect(res.body.error).toMatch(/API key/i)
+      expect(addAliasToStalwart).not.toHaveBeenCalled()
+    })
+
+    it('returns 401 when the API key field is empty (bare Bearer scheme)', async () => {
+      const res = await request(app)
+        .post('/api/v1/aliases')
+        .set('Authorization', 'Bearer')
+        .send({ domain: 'example.com' })
+      expect(res.status).toBe(401)
+      expect(addAliasToStalwart).not.toHaveBeenCalled()
+    })
+
+    it('strips the Bearer scheme before handing the key to Stalwart', async () => {
+      addAliasToStalwart.mockResolvedValue({ email: 'x@example.com', id: 'id1' })
+      await request(app)
+        .post('/api/v1/aliases')
+        .set('Authorization', AUTH)
+        .send({ domain: 'example.com' })
+      expect(addAliasToStalwart).toHaveBeenCalledWith(
+        'example.com',
+        TOKEN,
+        null,
+        expect.any(Object)
+      )
+    })
+
+    it('accepts a bare key with no scheme, which is what Bitwarden sends', async () => {
+      addAliasToStalwart.mockResolvedValue({ email: 'x@example.com', id: 'id1' })
+      await request(app)
+        .post('/api/v1/aliases')
+        .set('Authorization', 'API_rawkey')
+        .send({ domain: 'example.com' })
+      expect(addAliasToStalwart).toHaveBeenCalledWith(
+        'example.com',
+        'API_rawkey',
+        null,
+        expect.any(Object)
+      )
     })
   })
 
@@ -94,9 +133,9 @@ describe('POST /api/v1/aliases', () => {
 
       expect(addAliasToStalwart).toHaveBeenCalledWith(
         'peekoff.com',
-        AUTH,
+        TOKEN,
         null,
-        expect.objectContaining({ createdBy: 'Bitwarden' })
+        expect.any(Object)
       )
     })
 
@@ -128,9 +167,9 @@ describe('POST /api/v1/aliases', () => {
 
       expect(addAliasToStalwart).toHaveBeenCalledWith(
         'example.com',
-        AUTH,
+        TOKEN,
         'github.com',
-        expect.objectContaining({ forDomain: 'github.com', createdBy: 'Bitwarden' })
+        expect.objectContaining({ forDomain: 'github.com' })
       )
     })
   })
@@ -146,6 +185,33 @@ describe('POST /api/v1/aliases', () => {
 
       expect(res.status).toBe(500)
       expect(res.body.error).toMatch(/JMAP session discovery failed/)
+    })
+
+    it('passes a 401 from Stalwart through instead of masking it as 500', async () => {
+      addAliasToStalwart.mockRejectedValue(
+        Object.assign(new Error('Stalwart rejected the API key (HTTP 401)'), { status: 401 })
+      )
+
+      const res = await request(app)
+        .post('/api/v1/aliases')
+        .set('Authorization', AUTH)
+        .send({ domain: 'example.com' })
+
+      expect(res.status).toBe(401)
+    })
+
+    it('passes a 403 from Stalwart through instead of masking it as 500', async () => {
+      addAliasToStalwart.mockRejectedValue(
+        Object.assign(new Error('needs the sysMaskedEmailCreate permission'), { status: 403 })
+      )
+
+      const res = await request(app)
+        .post('/api/v1/aliases')
+        .set('Authorization', AUTH)
+        .send({ domain: 'example.com' })
+
+      expect(res.status).toBe(403)
+      expect(res.body.error).toMatch(/sysMaskedEmailCreate/)
     })
 
     it('returns 500 when Stalwart returns no email', async () => {

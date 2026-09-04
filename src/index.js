@@ -54,6 +54,23 @@ app.use((req, res, next) => {
   next();
 });
 
+export const MISSING_TOKEN_MESSAGE =
+  'Missing Stalwart API key. Bitwarden sent no Authorization header — ' +
+  'paste your Stalwart API key into the extension under ' +
+  'Generator → Username → Forwarded email alias → API key.';
+
+// Bitwarden sends the API key with no scheme, but a reverse proxy or a
+// user pasting 'Bearer <key>' can turn it into a scheme-prefixed value, and
+// an empty API key field sends either nothing or a bare 'Bearer'.
+export function readBearerToken(authHeader) {
+  if (typeof authHeader !== 'string') return null;
+  const trimmed = authHeader.trim();
+  if (!trimmed) return null;
+  if (/^Bearer$/i.test(trimmed)) return null;
+  const withoutScheme = trimmed.replace(/^Bearer\s+/i, '').trim();
+  return withoutScheme || null;
+}
+
 export function getBaseLabel(domain) {
   if (!domain) return null;
   const parts = domain.split('.');
@@ -82,7 +99,6 @@ async function createAlias(domain, stalwartToken, description = null) {
     forDomain: siteDomain ?? undefined,
     url: siteDomain ? `https://${siteDomain}` : undefined,
     emailPrefix: siteDomain ? getBaseLabel(siteDomain) : undefined,
-    createdBy: 'Bitwarden',
   });
 
   return { email: result.email, id: result.id, description: cleanDescription };
@@ -98,12 +114,11 @@ async function handleCreateAlias(req, res) {
     body: req.body,
   });
 
-  const authHeader = req.headers['authorization'];
-  if (!authHeader) {
-    return res.status(401).json({ error: 'Missing Authorization header' });
+  const stalwartToken = readBearerToken(req.headers['authorization']);
+  if (!stalwartToken) {
+    return res.status(401).json({ error: MISSING_TOKEN_MESSAGE });
   }
 
-  const stalwartToken = authHeader;
   const { domain, description } = req.body || {};
 
   if (!domain) {
@@ -115,7 +130,8 @@ async function handleCreateAlias(req, res) {
     created = await createAlias(domain, stalwartToken, description);
   } catch (err) {
     log('ERROR', `Failed to create alias: ${err.message}`);
-    return res.status(500).json({ error: err.message || 'Failed to create alias' });
+    const status = err.status === 401 || err.status === 403 ? err.status : 500;
+    return res.status(status).json({ error: err.message || 'Failed to create alias' });
   }
 
   const atIndex = created.email.indexOf('@');

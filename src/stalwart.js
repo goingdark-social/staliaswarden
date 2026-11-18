@@ -180,7 +180,7 @@ export async function addAliasToStalwart(desiredAlias, stalwartToken, descriptio
   const { apiUrl, accountId } = await discoverJmapSession(config.stalwartUrl, authHeader);
 
   const createFields = {
-    enabled: true,
+    enable: true,
     emailDomain: desiredAlias,
     ...(description != null ? { description } : {}),
     ...(opts.emailPrefix != null ? { emailPrefix: opts.emailPrefix } : {}),
